@@ -3,14 +3,25 @@
 const browser = require('webextension-polyfill')
 
 const { optionDefaults } = require('../../options')
-const chromeSocketsBundle = require('./libp2p-bundle')
 const mergeOptions = require('merge-options')
 const getPort = require('get-port')
 const { getIPv4, getIPv6 } = require('webrtc-ips')
 
+const Libp2p = require('libp2p')
+const WebSocketStarMulti = require('libp2p-websocket-star-multi')
+const WebRTCStar = require('libp2p-webrtc-star')
+const WS = require('libp2p-websockets')
+const TCP = require('libp2p-tcp')
+const Bootstrap = require('libp2p-bootstrap')
+const MulticastDNS = require('libp2p-mdns')
+
 const multiaddr = require('multiaddr')
 const maToUri = require('multiaddr-to-uri')
 const multiaddr2httpUrl = (ma) => maToUri(ma.includes('/http') ? ma : multiaddr(ma).encapsulate('/http'))
+
+const debug = require('debug')
+const log = debug('ipfs-companion:client:embedded:config')
+log.error = debug('ipfs-companion:client:embedded:config:error')
 
 // additional default js-ipfs config specific to runtime with chrome.sockets APIs
 const chromeDefaultOpts = {
@@ -113,7 +124,36 @@ async function buildConfig (opts, log) {
   // merge configs
   const finalOpts = {
     start: false,
-    libp2p: chromeSocketsBundle
+    libp2p: ({ libp2pOptions, peerInfo }) => {
+      const wrtcstar = new WebRTCStar({ id: peerInfo.id })
+
+      // TODO: provisional reset in case the same code run already in js-ipfs/src/core/runtime/libp2p-browser.js
+      peerInfo.multiaddrs.replace('/p2p-websocket-star', chromeDefaultOpts.config.Addresses.Swarm.find(addr => addr.includes('p2p-websocket-star')))
+
+      // this can be replaced once optional listening is supported with the below code. ref: https://github.com/libp2p/interface-transport/issues/41
+      // const wsstar = new WebSocketStar({ id: _options.peerInfo.id, ignore_no_online: true })
+      const wsstarServers = peerInfo.multiaddrs.toArray().map(String).filter(addr => addr.includes('p2p-websocket-star') && !addr.startsWith('/p2p-websocket-star'))
+      log('ws-star servers', wsstarServers)
+      peerInfo.multiaddrs.replace(wsstarServers.map(multiaddr), '/p2p-websocket-star') // the ws-star-multi module will replace this with the chosen ws-star servers
+      const wsstar = new WebSocketStarMulti({ servers: wsstarServers, id: peerInfo.id, ignore_no_online: true }) // allow scenario when all ws-stars are offline
+
+      libp2pOptions.modules.transport = [
+        TCP,
+        WS,
+        wrtcstar,
+        wsstar
+      ]
+
+      libp2pOptions.modules.peerDiscovery = [
+        wrtcstar.discovery,
+        wsstar.discovery,
+        MulticastDNS,
+        Bootstrap
+      ]
+
+      log('initializing libp2p with libp2pOptions', libp2pOptions)
+      return new Libp2p(libp2pOptions)
+    }
   }
   const ipfsNodeConfig = mergeOptions(defaultOpts, userOpts, chromeOpts, finalOpts)
 
