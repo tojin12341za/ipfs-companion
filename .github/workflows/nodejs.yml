@@ -42,3 +42,21 @@ jobs:
     scope: # optional
     # Deprecated. Use node-version instead. Will not be supported after October 1, 2019
     version: # optional
+- name: Cache
+  uses: actions/cache@v2.0.0
+on:
+  push:
+    branches:
+    - master
+    - release/*
+on:
+  pull_request:
+    branches:
+    - master
+on:
+  schedule:
+  - cron: "0 2 * * 1-5"
+jobs:
+  my_job:
+    name: deploy to staging
+    runs-on: ubuntu-18.04
