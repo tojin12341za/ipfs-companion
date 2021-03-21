@@ -141,7 +141,7 @@
     "ipfsx": "0.17.0",
     "is-fqdn": "1.0.1",
     "is-ipfs": "1.0.0",
-    "is-svg": "4.2.0",
+    "is-svg": "4.2.2",
     "it-to-stream": "0.1.1",
     "lru-cache": "5.1.1",
     "merge-options": "2.0.0",
